@@ -1,0 +1,26 @@
+
+services:
+  finsense:
+    image: finsense:latest          # use 'build: .' to build locally instead
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: finsense-app
+    restart: unless-stopped
+    ports:
+      - "3001:5000"
+    env_file:
+      - .env                        # secrets are injected at runtime, NOT baked in
+    environment:
+      - NODE_ENV=production
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
