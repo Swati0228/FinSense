@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/db';
 import User from '@/models/User';
+import { checkBudgetAndNotify } from '@/utils/budgetAlerts';
 
 export async function POST(req: NextRequest) {
   try {
@@ -28,6 +29,10 @@ export async function POST(req: NextRequest) {
 
     user.expenses.push(newExpense as any);
     await user.save();
+
+    // Trigger budget alert check in the background
+    // We don't await this to keep the API response fast
+    checkBudgetAndNotify(user, category, amount);
 
     return NextResponse.json({ message: 'Expense added successfully.', expense: newExpense }, { status: 201 });
   } catch (error: any) {
