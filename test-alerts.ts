@@ -11,7 +11,7 @@ async function runTest() {
     await connectDB();
     console.log("Connected to DB");
 
-    const userEmail = "swatisingh022805@gmail.com";
+    const userEmail = "22bce112@nith.ac.in";
     const user = await User.findOne({ email: userEmail });
 
     if (!user) {
