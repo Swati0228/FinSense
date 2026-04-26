@@ -55,17 +55,44 @@ export default function ChatsPage() {
     setNewMessage("");
     setIsTyping(true);
 
-    // Simulate bot response
-    setTimeout(() => {
-      const botResponse = {
+    // Send message to Gemini API
+    try {
+      // Map existing messages to Gemini history format
+      const history = messages.slice(1).map(msg => ({
+        role: msg.sender === 'user' ? 'user' : 'model',
+        parts: [{ text: msg.text }]
+      }));
+
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: newMessage, history }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        const botResponse = {
+          id: Date.now() + 1,
+          text: data.response,
+          sender: "bot" as const,
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, botResponse]);
+      } else {
+        throw new Error(data.error || 'Failed to get AI response');
+      }
+    } catch (err: any) {
+      const errorResponse = {
         id: Date.now() + 1,
-        text: "Thank you for your message! Our support team will get back to you shortly. Is there anything specific about your FinSense experience you'd like help with?",
+        text: `Error: ${err.message}`,
         sender: "bot" as const,
         timestamp: new Date(),
       };
-      setMessages((prev) => [...prev, botResponse]);
+      setMessages((prev) => [...prev, errorResponse]);
+    } finally {
       setIsTyping(false);
-    }, 2000);
+    }
   };
 
   return (
