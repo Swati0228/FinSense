@@ -9,7 +9,7 @@ dotenv.config();
 async function runTest() {
   try {
     await connectDB();
-    console.log("Connected to DB");
+    console.log("Connected to DB!! ");
 
     const userEmail = "22bce112@nith.ac.in";
     const user = await User.findOne({ email: userEmail });
