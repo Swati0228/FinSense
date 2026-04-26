@@ -23,6 +23,7 @@ import {
   FiUploadCloud,
   FiGlobe
 } from "react-icons/fi";
+import { SUPPORTED_CURRENCIES, convertToINR } from "@/utils/currency";
 
 const API_BASE_URL = "";
 
@@ -99,18 +100,9 @@ export default function AddExpense() {
       let finalNotes = notes;
 
       // Multi-Currency Conversion Logic
-      if (currency !== "INR") {
-        try {
-          const res = await axios.get(`https://api.exchangerate-api.com/v4/latest/${currency}`);
-          const rateToINR = res.data.rates["INR"];
-          if (rateToINR) {
-            finalAmount = Math.round(Number(amount) * rateToINR);
-            finalNotes = `(Original: ${amount} ${currency}) ${notes}`.trim();
-          }
-        } catch (err) {
-          throw new Error("Failed to fetch exchange rate. Please try again.");
-        }
-      }
+      const conversion = await convertToINR(Number(amount), currency, notes);
+      const finalAmount = conversion.convertedAmount;
+      const finalNotes = conversion.originalNotes;
 
       const payload = JSON.parse(atob(token!.split(".")[1]));
       
@@ -292,12 +284,13 @@ export default function AddExpense() {
                       <select 
                         value={currency} 
                         onChange={(e) => setCurrency(e.target.value)}
-                        className="bg-slate-100 px-3 py-3 border-r border-slate-200 text-slate-700 font-bold outline-none cursor-pointer"
+                        className="bg-slate-100 px-3 py-3 border-r border-slate-200 text-slate-700 font-bold outline-none cursor-pointer max-w-[100px]"
                       >
-                        <option value="INR">INR (₹)</option>
-                        <option value="USD">USD ($)</option>
-                        <option value="EUR">EUR (€)</option>
-                        <option value="GBP">GBP (£)</option>
+                        {SUPPORTED_CURRENCIES.map((curr) => (
+                          <option key={curr.code} value={curr.code}>
+                            {curr.code} ({curr.symbol})
+                          </option>
+                        ))}
                       </select>
                       <input
                         type="number"
