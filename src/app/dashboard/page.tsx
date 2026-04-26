@@ -21,7 +21,8 @@ import {
   FiDownload,
   FiUpload,
   FiSettings,
-  FiTrendingUp
+  FiTrendingUp,
+  FiRefreshCw
 } from "react-icons/fi";
 
 const categoryIconMap: Record<string, any> = {
@@ -55,6 +56,9 @@ interface Expense {
 export default function Dashboard() {
   const [selectedMonth, setSelectedMonth] = useState("");
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [plans, setPlans] = useState<any[]>([]);
+  const [aiInsight, setAiInsight] = useState<string>("");
+  const [isInsightLoading, setIsInsightLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -62,27 +66,58 @@ export default function Dashboard() {
     if (token) {
       const event = new Event("userAuthenticated");
       window.dispatchEvent(event);
-      fetchExpenses(token);
+      fetchDashboardData(token);
     } else {
       setIsLoading(false);
     }
   }, []);
 
-  const fetchExpenses = async (token: string) => {
+  const fetchDashboardData = async (token: string) => {
     try {
-      const res = await fetch('/api/expenses', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+      const [expenseRes, planRes] = await Promise.all([
+        fetch('/api/expenses', { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch('/api/plan-months', { headers: { 'Authorization': `Bearer ${token}` } })
+      ]);
+
+      if (expenseRes.ok) {
+        const data = await expenseRes.json();
+        setExpenses(data.expenses || []);
+      }
+      if (planRes.ok) {
+        const data = await planRes.json();
+        setPlans(data.plans || []);
+      }
+    } catch (error) {
+      console.error("Failed to fetch dashboard data:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Fetch AI Insight when current month data changes
+  useEffect(() => {
+    if (expenses.length > 0 && topCategory !== "None" && !aiInsight && !isInsightLoading) {
+      generateAIInsight();
+    }
+  }, [expenses, selectedMonth]);
+
+  const generateAIInsight = async () => {
+    setIsInsightLoading(true);
+    try {
+      const prompt = `Based on my spending this month, my top expense category is ${topCategory} with ₹${monthTotal.toLocaleString()} total spent. Give me one very specific, short, professional financial tip to save money next month.`;
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: prompt })
       });
       if (res.ok) {
         const data = await res.json();
-        setExpenses(data.expenses || []);
+        setAiInsight(data.response);
       }
-    } catch (error) {
-      console.error("Failed to fetch expenses:", error);
+    } catch (e) {
+      console.error("AI Insight error:", e);
     } finally {
-      setIsLoading(false);
+      setIsInsightLoading(false);
     }
   };
 
@@ -184,6 +219,22 @@ export default function Dashboard() {
     });
     return Object.keys(map).map(day => ({ day, amount: map[day] }));
   }, [monthData]);
+
+  // 3. Budget vs Actual Comparison
+  const budgetVsActualData = useMemo(() => {
+    const currentPlan = plans.find(p => p.month === currentMonthKey);
+    if (!currentPlan) return [];
+
+    const categories = ['Food', 'Travel', 'Bills', 'Shopping', 'Entertainment', 'Others'];
+    return categories.map(cat => {
+      const budgetKey = cat.toLowerCase() as keyof typeof currentPlan.categoryBudgets;
+      return {
+        category: cat,
+        budget: currentPlan.categoryBudgets[budgetKey] || 0,
+        actual: monthData.categories[cat] || 0
+      };
+    }).filter(d => d.budget > 0 || d.actual > 0);
+  }, [plans, currentMonthKey, monthData]);
 
   if (isLoading) {
     return (
@@ -377,6 +428,42 @@ export default function Dashboard() {
                    </div>
                  ) : (
                    <div className="flex-1 flex items-center justify-center text-slate-400 font-medium">No data to display</div>
+                </div>
+              </div>
+
+              {/* Budget vs Actual (Bar Chart) */}
+              <div className="rounded-3xl bg-white border border-slate-100 p-8 shadow-sm flex flex-col lg:col-span-2">
+                 <div className="flex justify-between items-start mb-6">
+                    <div>
+                        <h3 className="text-xl font-bold text-slate-800">Budget vs Actual Comparison</h3>
+                        <p className="text-sm text-slate-500 mt-1">See how well you are sticking to your planned limits.</p>
+                    </div>
+                    {budgetVsActualData.length === 0 && (
+                      <Link href="/dashboard/planmonth" className="text-xs font-bold text-teal-600 bg-teal-50 px-3 py-1.5 rounded-lg hover:bg-teal-100 transition-colors">Set Budgets</Link>
+                    )}
+                 </div>
+                 {budgetVsActualData.length > 0 ? (
+                   <div className="flex-1 min-h-[300px] -ml-4">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={budgetVsActualData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }} barGap={8}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                          <XAxis dataKey="category" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b', fontWeight: 'bold' }} />
+                          <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#94a3b8' }} tickFormatter={(val) => `₹${val}`} />
+                          <Tooltip 
+                             cursor={{ fill: '#f8fafc' }}
+                             contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}
+                          />
+                          <Bar dataKey="budget" name="Planned Budget" fill="#cbd5e1" radius={[4, 4, 0, 0]} barSize={35} />
+                          <Bar dataKey="actual" name="Actual Spent" fill="#0d9488" radius={[4, 4, 0, 0]} barSize={35} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                   </div>
+                 ) : (
+                   <div className="flex-1 flex flex-col items-center justify-center text-slate-400 py-12">
+                      <FiPieChart size={48} className="mb-4 opacity-20" />
+                      <p className="font-medium">No budgets set for this month.</p>
+                      <Link href="/dashboard/planmonth" className="mt-4 text-sm font-bold text-teal-600 underline underline-offset-4">Configure Monthly Plan</Link>
+                   </div>
                  )}
               </div>
             </div>
@@ -421,18 +508,24 @@ export default function Dashboard() {
                   </div>
                   <p className="text-sm text-slate-400 mb-6 font-medium">AI-driven actions to save this month.</p>
                   
-                  {monthTotal > 0 ? (
-                    <ul className="space-y-4 relative z-10">
-                      <li className="flex items-start gap-4 p-4 bg-white/5 backdrop-blur-sm rounded-2xl border border-white/10 hover:bg-white/10 transition-colors cursor-pointer">
-                        <div className="mt-1 w-2 h-2 rounded-full bg-teal-400 shadow-[0_0_8px_rgba(45,212,191,0.8)]" />
-                        <div>
-                          <div className="text-sm font-semibold text-white">Cut {topCategory.toLowerCase()} by 15%</div>
-                          <div className="text-xs font-medium text-teal-300 mt-1">Est. savings ₹ {Math.round((categoriesList[0]?.amount || 0) * 0.15)}</div>
+                  {aiInsight ? (
+                    <div className="space-y-4 relative z-10">
+                      <div className="p-4 bg-white/5 backdrop-blur-sm rounded-2xl border border-white/10">
+                        <div className="text-sm font-medium text-teal-50 leading-relaxed italic">
+                          "{aiInsight}"
                         </div>
-                      </li>
-                    </ul>
+                      </div>
+                      <button onClick={generateAIInsight} className="text-[10px] uppercase tracking-widest font-bold text-teal-400 hover:text-white transition-colors flex items-center gap-1">
+                         <FiRefreshCw className={isInsightLoading ? "animate-spin" : ""} /> Refresh Insight
+                      </button>
+                    </div>
+                  ) : isInsightLoading ? (
+                    <div className="flex flex-col gap-3 py-4">
+                       <div className="h-4 bg-white/10 rounded-full w-full animate-pulse"></div>
+                       <div className="h-4 bg-white/10 rounded-full w-3/4 animate-pulse"></div>
+                    </div>
                   ) : (
-                    <div className="text-sm text-slate-400 py-4">Add expenses to get personalized suggestions!</div>
+                    <div className="text-sm text-slate-400 py-4">Add expenses to get personalized AI suggestions!</div>
                   )}
                 </div>
 
