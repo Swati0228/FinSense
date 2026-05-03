@@ -193,8 +193,5 @@ npm run dev
 ## 📄 License
 This project is licensed under the MIT License.
 
-## 👥 Authors
-- **akt9802** - *Initial work* - [GitHub Profile](https://github.com/akt9802)
-
 ---
 **Built with ❤️ for better financial management**
